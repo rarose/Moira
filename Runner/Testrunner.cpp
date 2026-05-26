@@ -58,6 +58,7 @@ const char *selectedModel()
         case Model::M68EC040:  return "EC040";
         case Model::M68LC040:  return "LC040";
         case Model::M68040:    return "68040";
+        case Model::M68332:    return "CPU32";
 
         default:
             return "???";
@@ -77,6 +78,7 @@ void setupBinutils()
         case Model::M68EC040:  // Not supported by binutils
         case Model::M68LC040:  // Not supported by binutils
         case Model::M68040:    di.mach = MACH_68040; break;
+        case Model::M68332:    di.mach = 8; break;     // index 8 in m68k_arch_features = cpu32
     }
 
     // di.stream = binutilsStream;
@@ -109,6 +111,7 @@ void setupMusashi()
         case Model::M68EC040:  m68k_set_cpu_type(M68K_CPU_TYPE_68EC040);   break;
         case Model::M68LC040:  m68k_set_cpu_type(M68K_CPU_TYPE_68LC040);   break;
         case Model::M68040:    m68k_set_cpu_type(M68K_CPU_TYPE_68040);     break;
+        case Model::M68332:    m68k_set_cpu_type(M68K_CPU_TYPE_68020);     break;   // Musashi has no CPU32; only the binutils dasm is compared for this model
     }
 }
 
@@ -257,8 +260,8 @@ void run(unsigned seed)
             if constexpr (CHECK_MMU) runMMU(i);
             if constexpr (CHECK_FPU) runFPU(i);
 
-            // Switch the CPU core
-            if (cpuModel == Model::M68040) break;
+            // Switch the CPU core (M68332 / CPU32 is the last enum entry)
+            if (cpuModel == Model::M68332) break;
             cpuModel = Model(int(cpuModel) + 1);
         }
     }
@@ -414,6 +417,7 @@ void runMusashi(Setup &s, Result &r)
     cpuModel == Model::M68EC030 ? M68K_CPU_TYPE_68EC030 :
     cpuModel == Model::M68030   ? M68K_CPU_TYPE_68030 :
     cpuModel == Model::M68EC040 ? M68K_CPU_TYPE_68EC040 :
+    cpuModel == Model::M68332   ? M68K_CPU_TYPE_68020 :
     cpuModel == Model::M68LC040 ? M68K_CPU_TYPE_68LC040 : M68K_CPU_TYPE_68040;
 
     clock_t elapsed = clock();
@@ -490,6 +494,10 @@ bool skip(u16 op)
     bool result;
 
     moira::Instr instr = moiracpu->getInstrInfo(op).I;
+
+    // Musashi has no CPU32 core, so its execution can't be used as a reference.
+    // The CPU32 model is verified by the disassembler cross-check against binutils only.
+    if (cpuModel == Model::M68332) return true;
 
     // Skip some instructions that are broken in Musashi
     result =
@@ -710,6 +718,14 @@ bool compareDasm(Result &r1, Result &r2)
         case Model::M68LC040:
 
             skipBinutils |= r1.opcode >= 0xF000;
+            break;
+
+        case Model::M68332:
+
+            // Musashi has no CPU32 core, so cross-check the disassembler against
+            // binutils only. TBL lives at 0xF800-0xF83F; the rest of the F-line
+            // area has no CPU32 instructions, so leave it to the binutils oracle.
+            skipMusashi = true;
             break;
 
         default:

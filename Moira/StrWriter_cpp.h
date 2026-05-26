@@ -45,6 +45,9 @@ static const char *mnemonics[]
     "traphi",   "traple",   "trapls",   "traplt",   "trapmi",   "trapne",
     "trappl",   "trapvc",   "trapvs",   "trapf",    "trapt",    "unpk",
 
+    // CPU32
+    "tbls",     "tblsn",    "tblu",     "tblun",    "lpstop",   "bgnd",
+
     // 68040
     "cinv",     "cpush",    "move16",
 
@@ -1531,6 +1534,16 @@ StrWriter::operator<<(const Av<I, M, S> &av)
         case Instr::MOVE16:
 
             *this << "; (4)";
+            break;
+
+        case Instr::TBLS:
+        case Instr::TBLSN:
+        case Instr::TBLU:
+        case Instr::TBLUN:
+        case Instr::LPSTOP:
+        case Instr::BGND:
+
+            *this << "; (cpu32)";
             break;
 
         case Instr::MOVEC:

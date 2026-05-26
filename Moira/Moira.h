@@ -181,6 +181,10 @@ private:
     
 public:
     
+    // Checks whether a model is a CPU32-class core (a 68020 instruction-set
+    // subset: no bitfield/CAS/PACK/UNPK/CALLM/RTM/coprocessor instructions).
+    static constexpr bool isCPU32(Model m) { return m == Model::M68332; }
+
     // Checks if the emulated CPU model has a coprocessor interface
     bool hasCPI() const;
     
@@ -612,7 +616,14 @@ protected:
     // Writes a value to a register (D0, D1 ... D7, A0, A1 ... A7)
     template <Size S = Long> void writeR(int n, u32 v);
 
-    
+    // Shared core of the CPU32 TBL instruction. Given the two bracketing table
+    // entries (e0, e1) of size S, interpolates with the fraction in Dx[7:0] and
+    // writes the result back to Dx, updating the condition codes. 'sgn' selects
+    // signed (TBLS*) vs unsigned (TBLU*); 'noRound' selects the not-rounded
+    // surplus form (TBL*N) vs the rounded form.
+    template <Size S> void tblInterpolate(int dx, u32 e0, u32 e1, bool sgn, bool noRound);
+
+
     //
     // Instruction Analysis
     //

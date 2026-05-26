@@ -156,6 +156,12 @@ MOIRA_DECLARE(Unlk)
 MOIRA_DECLARE(UnpkDn)
 MOIRA_DECLARE(UnpkPd)
 
+// CPU32
+MOIRA_DECLARE(TblReg)
+MOIRA_DECLARE(TblEa)
+MOIRA_DECLARE(Bgnd)
+// LPSTOP shares opcode 0xF800 with the TBL register form and is dispatched from there.
+
 // CPI (Coprocessor interface)
 MOIRA_DECLARE(CpBcc)
 MOIRA_DECLARE(CpDbcc)

@@ -4055,6 +4055,152 @@ Moira::execMuluMusashi(u16 opcode)
     writeD(dst, result);
 }
 
+template <Size S> void
+Moira::tblInterpolate(int dx, u32 e0, u32 e1, bool sgn, bool noRound)
+{
+    i64 en  = sgn ? (i64)SEXT<S>(e0) : (i64)CLIP<S>(e0);   // ENTRY[n]
+    i64 en1 = sgn ? (i64)SEXT<S>(e1) : (i64)CLIP<S>(e1);   // ENTRY[n+1]
+    i64 f   = readD(dx) & 0xFF;                            // interpolation fraction
+
+    i64 temp = (en1 - en) * f;                            // (ENTRY[n+1] - ENTRY[n]) * fraction
+    i64 result;
+
+    if (noRound) {
+
+        // Not-rounded "surplus" form (TBL*N): keep 8 fractional bits in a 32-bit result
+        result = en * 256 + temp;
+        writeD<Long>(dx, u32(result));
+        reg.sr.n = NBIT<Long>(u32(result));
+        reg.sr.z = ZERO<Long>(u32(result));
+
+    } else {
+
+        // Rounded form (TBLS/TBLU): ENTRY[n] + temp/256, rounded half away from zero
+        i64 q   = temp / 256;
+        i64 rem = temp % 256;
+        if (rem < 0) rem = -rem;
+        if (rem >= 128) q += (temp < 0 ? -1 : 1);
+        result = en + q;
+        writeD<S>(dx, u32(result));
+        reg.sr.n = NBIT<S>(u32(result));
+        reg.sr.z = ZERO<S>(u32(result));
+    }
+
+    reg.sr.v = 0;
+    reg.sr.c = 0;
+}
+
+template <Core C, Instr I, Mode M, Size S> void
+Moira::execTblReg(u16 opcode)
+{
+    AVAILABILITY(Core::C68020)
+
+    u16 ext = (u16)queue.irc;
+
+    // LPSTOP shares opcode 0xF800 with the TBL register form (Dym=0). Its fixed
+    // second word 0x01C0 disambiguates it; a third word supplies the new SR.
+    if (opcode == 0xF800 && ext == 0x01C0) {
+
+        SUPERVISOR_MODE_ONLY
+
+        (void)readI<C, Word>();             // consume the 0x01C0 word
+        u16 sr = (u16)readI<C, Word>();     // new status register value
+        setSR(sr);
+        flags |= State::STOPPED;
+        reg.pc0 = reg.pc;
+
+        CYCLES_68020(10)
+        FINALIZE;
+        return;
+    }
+
+    // The size field (bits 7-6) only encodes byte/word/long; 0b11 is illegal.
+    if (________xx______(ext) == 3) {
+        execException<C>(M68kException::ILLEGAL);
+        CYCLES_68020(20)
+        FINALIZE;
+        return;
+    }
+
+    readExt<C>();
+
+    int  dx  = _xxx____________(ext);
+    bool sgn = ext & 0x0800;
+    bool nrd = ext & 0x0400;
+
+    u32 e0 = readD(_____________xxx(opcode));   // Dym = ENTRY[n]
+    u32 e1 = readD(_____________xxx(ext));      // Dyn = ENTRY[n+1]
+
+    switch (________xx______(ext)) {
+        case 0: tblInterpolate<Byte>(dx, e0, e1, sgn, nrd); break;
+        case 1: tblInterpolate<Word>(dx, e0, e1, sgn, nrd); break;
+        case 2: tblInterpolate<Long>(dx, e0, e1, sgn, nrd); break;
+    }
+
+    prefetch<C, POLL>();
+
+    CYCLES_68020(30)    // Nominal; CPU32 instruction timing is not modeled
+
+    FINALIZE;
+}
+
+template <Core C, Instr I, Mode M, Size S> void
+Moira::execTblEa(u16 opcode)
+{
+    AVAILABILITY(Core::C68020)
+
+    u16 ext = (u16)queue.irc;
+
+    // The size field (bits 7-6) only encodes byte/word/long; 0b11 is illegal.
+    if (________xx______(ext) == 3) {
+        execException<C>(M68kException::ILLEGAL);
+        CYCLES_68020(20)
+        FINALIZE;
+        return;
+    }
+
+    readExt<C>();
+
+    int  dx  = _xxx____________(ext);
+    bool sgn = ext & 0x0800;
+    bool nrd = ext & 0x0400;
+    int  src = _____________xxx(opcode);
+
+    // ENTRY[n] is at the effective address, ENTRY[n+1] at the next entry.
+    switch (________xx______(ext)) {
+
+        case 0: { u32 ea, e0; readOp<C, M, Byte>(src, &ea, &e0);
+                  u32 e1 = readM<C, M, Byte>(ea + Byte);
+                  tblInterpolate<Byte>(dx, e0, e1, sgn, nrd); break; }
+        case 1: { u32 ea, e0; readOp<C, M, Word>(src, &ea, &e0);
+                  u32 e1 = readM<C, M, Word>(ea + Word);
+                  tblInterpolate<Word>(dx, e0, e1, sgn, nrd); break; }
+        case 2: { u32 ea, e0; readOp<C, M, Long>(src, &ea, &e0);
+                  u32 e1 = readM<C, M, Long>(ea + Long);
+                  tblInterpolate<Long>(dx, e0, e1, sgn, nrd); break; }
+    }
+
+    prefetch<C, POLL>();
+
+    CYCLES_68020(40)    // Nominal; CPU32 instruction timing is not modeled
+
+    FINALIZE;
+}
+
+template <Core C, Instr I, Mode M, Size S> void
+Moira::execBgnd(u16 opcode)
+{
+    AVAILABILITY(Core::C68020)
+
+    // No background debug mode is emulated, so BGND raises an illegal instruction
+    // exception (the documented behavior when background mode is disabled).
+    execException<C>(M68kException::ILLEGAL);
+
+    CYCLES_68020(20)
+
+    FINALIZE
+}
+
 template <Core C, Instr I, Mode M, Size S> void
 Moira::execMull(u16 opcode)
 {

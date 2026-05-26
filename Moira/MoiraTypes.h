@@ -55,7 +55,8 @@ enum class Model
     M68030,                 // Disassembler only
     M68EC040,               // Disassembler only
     M68LC040,               // Disassembler only
-    M68040                  // Disassembler only
+    M68040,                 // Disassembler only
+    M68332                  // CPU32 core (e.g. 68330/68331/68332/68340)
 };
 
 // Execution cores
@@ -122,7 +123,10 @@ enum class Instr
     RTM,        TRAPCC,     TRAPCS,     TRAPEQ,     TRAPGE,     TRAPGT,
     TRAPHI,     TRAPLE,     TRAPLS,     TRAPLT,     TRAPMI,     TRAPNE,
     TRAPPL,     TRAPVC,     TRAPVS,     TRAPF,      TRAPT,      UNPK,
-    
+
+    // CPU32 instructions
+    TBLS,       TBLSN,      TBLU,       TBLUN,      LPSTOP,     BGND,
+
     // 68040 instructions
     CINV,       CPUSH,      MOVE16,
     
@@ -372,11 +376,15 @@ static constexpr u16 M68010         = 1 << int(Model::M68010);
 static constexpr u16 M68020         = 1 << int(Model::M68EC020) | 1 << int(Model::M68020);
 static constexpr u16 M68030         = 1 << int(Model::M68EC030) | 1 << int(Model::M68030);
 static constexpr u16 M68040         = 1 << int(Model::M68EC040) | 1 << int(Model::M68LC040) | 1 << int(Model::M68040);
+static constexpr u16 CPU32          = 1 << int(Model::M68332);
 static constexpr u16 MMU            = 1 << int(Model::M68030) | 1 << int(Model::M68LC040) | 1 << int(Model::M68040);
 static constexpr u16 FPU            = 1 << int(Model::M68040);
 static constexpr u16 M68030_UP      = M68030 | M68040;
 static constexpr u16 M68020_UP      = M68020 | M68030_UP;
-static constexpr u16 M68010_UP      = M68010 | M68020_UP;
+// CPU32 is a 68020 instruction-set subset, so it joins the 68000/68010 base
+// chains (full 68000 set plus BKPT/MOVEC/MOVES/RTD) but NOT M68020_UP, which
+// gates the 68020-only instructions CPU32 lacks (bitfield, CAS, PACK, etc.).
+static constexpr u16 M68010_UP      = M68010 | M68020_UP | CPU32;
 static constexpr u16 M68000_UP      = M68000 | M68010_UP;
 }
 

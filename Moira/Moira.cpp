@@ -151,7 +151,8 @@ Moira::cacrMask() const
 
         case Model::M68020: case Model::M68EC020: return 0x0003;
         case Model::M68030: case Model::M68EC030: return 0x3F13;
-        
+        case Model::M68332: return 0x0000;  // CPU32 has no cache control register
+
         default:
             return 0xFFFF;
     }
@@ -615,13 +616,25 @@ Moira::availabilityMask(Instr I) const
 
         case Instr::BFCHG: case Instr::BFCLR: case Instr::BFEXTS: case Instr::BFEXTU: case Instr::BFFFO:
         case Instr::BFINS: case Instr::BFSET: case Instr::BFTST: case Instr::CAS: case Instr::CAS2:
+        case Instr::PACK: case Instr::UNPK:
+
+            // 68020-only instructions that CPU32 does NOT implement
+            return AV::M68020_UP;
+
         case Instr::CHK2: case Instr::CMP2: case Instr::DIVL: case Instr::EXTB: case Instr::MULL:
-        case Instr::PACK: case Instr::TRAPCC: case Instr::TRAPCS: case Instr::TRAPEQ: case Instr::TRAPGE:
+        case Instr::TRAPCC: case Instr::TRAPCS: case Instr::TRAPEQ: case Instr::TRAPGE:
         case Instr::TRAPGT: case Instr::TRAPHI: case Instr::TRAPLE: case Instr::TRAPLS: case Instr::TRAPLT:
         case Instr::TRAPMI: case Instr::TRAPNE: case Instr::TRAPPL: case Instr::TRAPVC: case Instr::TRAPVS:
-        case Instr::TRAPF: case Instr::TRAPT: case Instr::UNPK:
+        case Instr::TRAPF: case Instr::TRAPT:
 
-            return AV::M68020_UP;
+            // 68020 instructions that CPU32 also implements
+            return AV::M68020_UP | AV::CPU32;
+
+        case Instr::TBLS: case Instr::TBLSN: case Instr::TBLU: case Instr::TBLUN:
+        case Instr::LPSTOP: case Instr::BGND:
+
+            // CPU32-only instructions
+            return AV::CPU32;
 
         case Instr::CINV: case Instr::CPUSH: case Instr::MOVE16:
 
@@ -670,16 +683,24 @@ Moira::availabilityMask(Instr I, Mode M, Size S) const
             if (isPrgMode(M)) mask &= AV::M68010_UP;
             break;
 
-        case Instr::CHK: case Instr::LINK: case Instr::BRA: case Instr::BHI: case Instr::BLS: case Instr::BCC: case Instr::BCS:
+        case Instr::CHK:
+
+            // 32-bit CHK is 68020+ only (CPU32 has CHK.W only)
+            if (S == Long) mask &= AV::M68020_UP;
+            break;
+
+        case Instr::LINK: case Instr::BRA: case Instr::BHI: case Instr::BLS: case Instr::BCC: case Instr::BCS:
         case Instr::BNE: case Instr::BEQ: case Instr::BVC: case Instr::BVS: case Instr::BPL: case Instr::BMI: case Instr::BGE:
         case Instr::BLT: case Instr::BGT: case Instr::BLE: case Instr::BSR:
 
-            if (S == Long) mask &= AV::M68020_UP;
+            // CPU32 supports long branches and long LINK
+            if (S == Long) mask &= AV::M68020_UP | AV::CPU32;
             break;
 
         case Instr::TST:
 
-            if (M == Mode(1) || M >= Mode(9)) mask &= AV::M68020_UP;
+            // CPU32 supports the extended TST addressing modes
+            if (M == Mode(1) || M >= Mode(9)) mask &= AV::M68020_UP | AV::CPU32;
             break;
 
         default:
@@ -761,6 +782,8 @@ Moira::availabilityString(Instr I, Mode M, Size S, u16 ext)
         case AV::M68020:              return "(2)";
         case AV::M68020 | AV::M68030: return "(2-3)";
         case AV::M68020_UP:           return "(2+)";
+        case AV::M68020_UP | AV::CPU32: return "(2+)";
+        case AV::CPU32:               return "(cpu32)";
         case AV::M68040:              return "(4+)";
 
         default:
@@ -787,6 +810,14 @@ Moira::isValidExt(Instr I, Mode M, u16 op, u32 ext) const
         case Instr::CMP2:      return (ext & 0x0FFF) == 0;
         case Instr::MULL:      return (ext & 0x83F8) == 0;
         case Instr::DIVL:      return (ext & 0x83F8) == 0;
+
+        case Instr::TBLS: case Instr::TBLSN: case Instr::TBLU: case Instr::TBLUN:
+            // Register form (Dym:Dyn,Dx) when M is a data register, else memory form.
+            // Reserved extension-word bits must be zero (and bit 8 selects the form).
+            // The size field (bits 7-6) must be byte/word/long; 0b11 is illegal.
+            if ((ext & 0x00C0) == 0x00C0) return false;
+            return M == Mode::DN ? (ext & 0x8338) == 0
+                                 : (ext & 0x823F) == 0 && (ext & 0x0100) != 0;
 
         default:
             fatalError;
