@@ -52,7 +52,7 @@ static const unsigned m68k_arch_features[] = {
     m68030 | m68881 | m68851,
     m68040 | m68881 | m68851,
     m68060 | m68881 | m68851,
-    cpu32 | m68881,
+    cpu32,                  /* Moira: dropped m68881 so this matches a coprocessor-less CPU32 (e.g. 68332) */
     fido_a | m68881,
     mcfisa_a,
     mcfisa_a | mcfhwdiv,

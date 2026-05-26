@@ -488,7 +488,7 @@ Moira::createJumpTable(Model model, bool regDasm)
     //               -------------------------------------------------
     //                 X       X           X   X   X   X
 
-    if constexpr (C >= Core::C68020) {
+    if constexpr (C >= Core::C68020) if (!isCPU32(model)) {
 
         opcode = parse("1110 1010 11-- ----");
         __________MMMXXX(opcode, Instr::BFCHG, 0b100000000000, Long, BitFieldDn, CIMS)
@@ -518,7 +518,7 @@ Moira::createJumpTable(Model model, bool regDasm)
     //               -------------------------------------------------
     //                 X       X           X   X   X   X   X   X   X
 
-    if constexpr (C >= Core::C68020) {
+    if constexpr (C >= Core::C68020) if (!isCPU32(model)) {
 
         opcode = parse("1110 1011 11-- ----");
         __________MMMXXX(opcode, Instr::BFEXTS, 0b100000000000, Long, BitFieldDn, CIMS)
@@ -681,7 +681,7 @@ Moira::createJumpTable(Model model, bool regDasm)
     //               -------------------------------------------------
     //                         X   X   X   X   X   X   X   X   X
 
-    if constexpr (C >= Core::C68020) {
+    if constexpr (C >= Core::C68020) if (!isCPU32(model)) {
 
         // CAS
         opcode = parse("0000 1010 11-- ----");
@@ -713,8 +713,9 @@ Moira::createJumpTable(Model model, bool regDasm)
     opcode = parse("0100 ---1 10-- ----");
     ____XXX___MMMXXX(opcode, Instr::CHK, 0b101111111111, Word, Chk, CIMS)
 
-    if constexpr (C >= Core::C68020) {
+    if constexpr (C >= Core::C68020) if (!isCPU32(model)) {
 
+        // 32-bit CHK is a 68020+ instruction; CPU32 only has CHK.W
         opcode = parse("0100 ---1 00-- ----");
         ____XXX___MMMXXX(opcode, Instr::CHK, 0b101111111111, Long, Chk, CIMS)
     }
@@ -1498,7 +1499,7 @@ Moira::createJumpTable(Model model, bool regDasm)
     //               PACK DX,Dy,#<adjustment>
     //        Sizes: Unsized
 
-    if constexpr (C >= Core::C68020) {
+    if constexpr (C >= Core::C68020) if (!isCPU32(model)) {
 
         opcode = parse("1000 ---1 0100 0---");
         ____XXX______XXX(opcode, Instr::PACK, Mode::DN, Word, PackDn, CIMS)
@@ -1886,13 +1887,40 @@ Moira::createJumpTable(Model model, bool regDasm)
     //               UNPK DX,Dy,#<adjustment>
     //        Sizes: Unsized
 
-    if constexpr (C >= Core::C68020) {
+    if constexpr (C >= Core::C68020) if (!isCPU32(model)) {
 
         opcode = parse("1000 ---1 1000 0---");
         ____XXX______XXX(opcode, Instr::UNPK, Mode::DN, Word, UnpkDn, CIMS)
 
         opcode = parse("1000 ---1 1000 1---");
         ____XXX______XXX(opcode, Instr::UNPK, Mode::PD, Word, UnpkPd, CIMS)
+    }
+
+
+    // TBL (Table Lookup and Interpolate, CPU32 only)
+    //
+    //       Syntax: (1) TBLx <ea>, Dx
+    //               (2) TBLx Dym:Dyn, Dx
+    //         Size: Byte, Word, Longword  (encoded in the extension word)
+    //
+    // The variant (TBLS/TBLSN/TBLU/TBLUN) and the operand size live in the
+    // extension word, so a single opcode maps to one handler that decodes them
+    // at run time.
+
+    if constexpr (C >= Core::C68020) if (isCPU32(model)) {
+
+        // Memory form: TBLx <ea>, Dx  (control addressing modes)
+        opcode = parse("1111 1000 00-- ----");
+        __________MMMXXX(opcode, Instr::TBLS, 0b001001111110, Long, TblEa, CIMS)
+
+        // Register form: TBLx Dym:Dyn, Dx
+        // (also the dispatch point for LPSTOP, which shares opcode 0xF800)
+        opcode = parse("1111 1000 0000 0---");
+        _____________XXX(opcode, Instr::TBLS, Mode::DN, Long, TblReg, CIMS)
+
+        // BGND (enter background mode)
+        opcode = parse("0100 1010 1111 1010");
+        ________________(opcode, Instr::BGND, Mode::IP, Unsized, Bgnd, CIMS)
     }
 
     //

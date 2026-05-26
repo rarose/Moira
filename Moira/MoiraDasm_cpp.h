@@ -1534,6 +1534,82 @@ Moira::dasmMulu(StrWriter &str, u32 &addr, u16 op) const
     dasmMuls<I, M, S>(str, addr, op);
 }
 
+// Emits the TBL mnemonic (bit 11 = signed, bit 10 = not-rounded) and the
+// operand size suffix (extension word bits 7-6).
+static inline void dasmTblHead(StrWriter &str, u16 ext)
+{
+    if (ext & 0x0800) {
+        (ext & 0x0400) ? str << Ins<Instr::TBLSN>{} : str << Ins<Instr::TBLS>{};
+    } else {
+        (ext & 0x0400) ? str << Ins<Instr::TBLUN>{} : str << Ins<Instr::TBLU>{};
+    }
+    switch ((ext >> 6) & 3) {
+        case 0: str << Sz<Byte>{}; break;
+        case 1: str << Sz<Word>{}; break;
+        case 2: str << Sz<Long>{}; break;
+    }
+}
+
+template <Instr I, Mode M, Size S> void
+Moira::dasmTblEa(StrWriter &str, u32 &addr, u16 op) const
+{
+    auto old = addr;
+    auto ext = dasmIncRead <Word> (addr);
+
+    // Reserved extension-word bits must be zero (binutils renders these as illegal)
+    if (!isValidExt(I, M, op, (u16)ext)) {
+        addr = old;
+        dasmIllegal<I, M, S>(str, addr, op);
+        return;
+    }
+
+    auto src = Op <M,S> ( _____________xxx(op), addr );
+    auto dst = Dn       ( _xxx____________(ext)      );
+
+    dasmTblHead(str, (u16)ext);
+    str << str.tab << src << Sep{} << dst;
+    str << Av<I, M, S>{};
+}
+
+template <Instr I, Mode M, Size S> void
+Moira::dasmBgnd(StrWriter &str, u32 &addr, u16 op) const
+{
+    str << Ins<I>{} << Av<I, M, S>{};
+}
+
+template <Instr I, Mode M, Size S> void
+Moira::dasmTblReg(StrWriter &str, u32 &addr, u16 op) const
+{
+    auto old = addr;
+    auto ext = dasmIncRead <Word> (addr);
+
+    // LPSTOP shares opcode 0xF800 with the TBL register form; its fixed second
+    // word 0x01C0 disambiguates it, followed by an immediate (the new SR).
+    if (op == 0xF800 && (u16)ext == 0x01C0) {
+        auto src = dasmIncRead<Word>(addr);
+        str << Ins<Instr::LPSTOP>{} << str.tab << Ims<Word>(src);
+        str << Av<Instr::LPSTOP, M, S>{};
+        return;
+    }
+
+    if (!isValidExt(I, M, op, (u16)ext)) {
+        addr = old;
+        dasmIllegal<I, M, S>(str, addr, op);
+        return;
+    }
+
+    auto dym = Dn ( _____________xxx(op)  );
+    auto dyn = Dn ( _____________xxx(ext) );
+    auto dx  = Dn ( _xxx____________(ext) );
+
+    // GNU/binutils separates the register pair with a comma; Moira/Musashi use a colon
+    auto fill = (str.style.syntax == Syntax::GNU || str.style.syntax == Syntax::GNU_MIT) ? "," : ":";
+
+    dasmTblHead(str, (u16)ext);
+    str << str.tab << dym << fill << dyn << Sep{} << dx;
+    str << Av<I, M, S>{};
+}
+
 template <Instr I, Mode M, Size S> void
 Moira::dasmMull(StrWriter &str, u32 &addr, u16 op) const
 {
